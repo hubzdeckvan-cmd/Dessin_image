@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <title>ano-chamfer-pg</title>
+  <!-- Border ring (transparent background) -->
+  <path d="M0,0 H24 V24 H0 Z M3.5,3.5 H20.5 V20.5 H3.5 Z"
+        fill="#000000" fill-rule="evenodd"/>
+  <!-- Chamfer wedge (top-right) -->
+  <path d="M20.5,3.5 L13.5,5.8 L18.2,10.5 Z" fill="#000000"/>
+</svg>

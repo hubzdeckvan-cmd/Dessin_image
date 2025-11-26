@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <title>ano-vegetation-pg-tech</title>
+  <defs>
+    <style>
+      .diag  { fill: none; stroke: #2e7d32; stroke-width: 0.9; stroke-linecap: square; opacity: 0.7; }
+      .leaf  { fill: none; stroke: #43a047; stroke-width: 0.8; opacity: 0.75; }
+      .seed  { fill: #2e7d32; opacity: 0.7; }
+    </style>
+  </defs>
+
+  <!-- diagonales 45° (tileables) -->
+  <path class="diag" d="M-2,6 L6,-2" />
+  <path class="diag" d="M2,10 L10,2" />
+  <path class="diag" d="M6,14 L14,6" />
+  <path class="diag" d="M10,18 L18,10" />
+  <path class="diag" d="M14,22 L22,14" />
+  <path class="diag" d="M18,26 L26,18" />
+
+  <!-- petites marques de feuilles (V) placées pour rester tileables -->
+  <path class="leaf" d="M4,8 l1.5,-1.5 M4,8 l1.5,1.5" />
+  <path class="leaf" d="M16,16 l1.5,-1.5 M16,16 l1.5,1.5" />
+
+  <!-- graines -->
+  <circle class="seed" cx="12" cy="12" r="0.6"/>
+  <circle class="seed" cx="19" cy="5"  r="0.6"/>
+</svg>

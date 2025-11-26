@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <title>ano-stagnation-eau-pg</title>
+  <defs>
+    <style>
+      .r1{fill:none;stroke:#1e88e5;stroke-width:1;opacity:0.8}
+      .r2{fill:none;stroke:#1e88e5;stroke-width:0.8;opacity:0.55}
+      .p1{fill:none;stroke:#42a5f5;stroke-width:0.7;opacity:0.6}
+      .p2{fill:none;stroke:#42a5f5;stroke-width:0.6;opacity:0.45}
+    </style>
+  </defs>
+
+  <!-- ripple horizontales (seamless) -->
+  <path class="r1" d="M0,6 C4,5 8,7 12,6 C16,5 20,7 24,6" />
+  <path class="r2" d="M0,12 C4,11 8,13 12,12 C16,11 20,13 24,12" />
+  <path class="r1" d="M0,18 C4,17 8,19 12,18 C16,17 20,19 24,18" />
+
+  <!-- petits anneaux d'eau (seamless when repeated) -->
+  <g>
+    <circle class="p1" cx="6"  cy="9"  r="2.2"/>
+    <circle class="p2" cx="6"  cy="9"  r="1.2"/>
+  </g>
+  <g>
+    <circle class="p1" cx="18" cy="15" r="2.2"/>
+    <circle class="p2" cx="18" cy="15" r="1.2"/>
+  </g>
+</svg>

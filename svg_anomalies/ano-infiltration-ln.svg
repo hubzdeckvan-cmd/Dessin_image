@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="12" viewBox="0 0 100 12">
+  <title>ano-infiltration-ln</title>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#42a5f5" stop-opacity="0.9"/>
+      <stop offset="0.5" stop-color="#1e88e5" stop-opacity="1"/>
+      <stop offset="1" stop-color="#42a5f5" stop-opacity="0.9"/>
+    </linearGradient>
+  </defs>
+  <!-- wavy base -->
+  <path d="M0,6 C10,4 20,8 30,6 C40,4 50,8 60,6 C70,4 80,8 90,6 C95,5 98,6 100,6"
+        fill="none" stroke="url(#g)" stroke-width="2" stroke-linecap="round"/>
+  <!-- subtle highlight -->
+  <path d="M10,6 C20,5 30,7 40,6" fill="none" stroke="#90caf9" stroke-width="0.8" opacity="0.7"/>
+  <!-- small droplet at center -->
+  <path d="M50 4 C50 3.1 51.2 1.9 52 1.1 C52.8 1.9 54 3.1 54 4 C54 5.1 53.1 6 52 6 C50.9 6 50 5.1 50 4 Z"
+        fill="#1e88e5" opacity="0.9"/>
+</svg>

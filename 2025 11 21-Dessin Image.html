@@ -1,0 +1,2010 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<title>Carte avec TreeView, SVG anomalies dynamiques & Export</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.css"/>
+
+<style>
+  body { font-family: Arial, sans-serif; }
+  #map {
+    height: 600px;
+    width: 800px;
+    border: 1px solid #ccc;
+    margin-bottom: 8px;
+    position: relative;
+    background: #fff;
+  }
+  #treeView {
+    max-height: 250px;
+    overflow-y: auto;
+    border: 1px solid #ccc;
+    padding: 6px;
+    width: 800px;
+    font-size: 14px;
+  }
+  #treeView ul { margin: 0; padding-left: 0; }
+  #treeView li { list-style: none; user-select: none; }
+  #treeView li:hover { background-color: #eef6ff; }
+
+  button {
+    margin-bottom: 12px;
+    padding: 6px 12px;
+    font-size: 14px;
+    cursor: pointer;
+    margin-right: 6px;
+  }
+  textarea { font-family: monospace; }
+
+  /* Étiquettes */
+  .mgc-label-wrapper {
+    pointer-events: auto;
+    cursor: move;
+  }
+  .mgc-label {
+    position: relative;
+    left: 50%;
+    transform: translateX(-50%);
+    transform-origin: center bottom;
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+    line-height: 1.2;
+    white-space: nowrap;
+    text-align: center;
+    background: transparent;
+    padding: 0;
+    color: inherit;
+  }
+  .mgc-label-main { display: inline-block; }
+  .mgc-label-text { display: inline-block; }
+  .mgc-label-line {
+    height: 1px;
+    margin: 0 auto 0 auto;
+    width: 100%;
+    background: currentColor;
+  }
+  .mgc-label-photos {
+    color: red;
+    font-size: 10px;
+    margin-top: 2px;
+    text-align: left;
+  }
+
+  /* Palettes */
+  .swatch-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 2px;
+  }
+  .swatch {
+    width: 32px;
+    height: 28px;
+    border: 1px solid #aaa;
+    border-radius: 4px;
+    cursor: pointer;
+    background-repeat: repeat;
+    background-size: 24px 24px;
+    background-position: center;
+  }
+  .swatch-none { background-color: #fff; }
+  .swatch.selected {
+    outline: 2px solid #1e90ff;
+    box-shadow: 0 0 0 3px rgba(30,144,255,0.2);
+  }
+
+  .popover-palette {
+    position: absolute;
+    z-index: 9999;
+    background: #fff;
+    border: 1px solid #aaa;
+    border-radius: 4px;
+    padding: 6px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+    pointer-events: auto;
+  }
+  .popover-title {
+    font: 12px/1.2 Arial, sans-serif;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .leaflet-container .popover-palette { pointer-events: auto; }
+
+  .palette-min {
+    position: absolute;
+    z-index: 9999;
+    right: 8px;
+    top: 8px;
+    background: #fff;
+    border: 1px solid #aaa;
+    border-radius: 18px;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+    cursor: pointer;
+    user-select: none;
+  }
+  .palette-min.secondary { top: 48px; }
+  .palette-min.tertiary { top: 88px; }
+  .palette-min .preview {
+    width: 24px;
+    height: 20px;
+    border: 1px solid #aaa;
+    border-radius: 4px;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 16px 16px;
+  }
+  .palette-min .label {
+    font: 12px Arial, sans-serif;
+    color: #333;
+  }
+
+  .svg-point-icon img { display: block; }
+
+  .line-svg-segment {
+    position: absolute;
+    pointer-events: none;
+    z-index: 650; /* au-dessus des overlays Leaflet (tile/overlay/markers) */
+  }
+
+</style>
+</head>
+<body>
+
+<h2>Dessine sur l'image avec TreeView (SVG anomalies dynamiques)</h2>
+
+<!-- Conteneur des defs SVG dynamiques -->
+<svg id="svg-defs-root" width="0" height="0" style="position:absolute">
+  <defs id="svg-defs"></defs>
+</svg>
+
+<div id="map"></div>
+
+<div style="margin: 8px 0;">
+  <button id="btnChooseBg">Parcourir une image de fond…</button>
+  <input id="bgFile" type="file" accept="image/*" style="display:none">
+  <span id="bgInfo" style="margin-left:8px;color:#555;"></span>
+</div>
+
+<div style="margin: 4px 0 10px 0;">
+  <button id="btnLoadSvgDir">Charger SVG anomalies…</button>
+  <!-- Sélection du dossier svg_anomalies (compatible file:// via File API) -->
+  <input id="svgDirInput" type="file" webkitdirectory directory multiple accept=".svg" style="display:none">
+  <span id="svgInfo" style="margin-left:8px;color:#555;"></span>
+</div>
+
+<div style="margin-top: 10px;">
+  <textarea id="wktInput" rows="2" style="width: 800px;" placeholder="Entrez une géométrie WKT ici."></textarea><br>
+  <button id="generateFromWktBtn">Générer</button>
+  <button id="showLabelsBtn">Afficher les noms (étiquettes + traits)</button>
+
+  <button id="btnImportExcel">Importer Excel</button>
+  <button id="btnExportExcel">Exporter Excel</button>
+  <button id="btnExportImage">Exporter en image (PNG)</button>
+  <input id="excelFileInput" type="file" accept=".xlsx,.xls" style="display:none">
+
+  <label for="labelFontInput" style="margin-left:12px;">Hauteur texte (px) :</label>
+  <input id="labelFontInput" type="number" value="12" min="4" max="72" step="1" style="width:60px;">
+</div>
+
+<div id="treeView"></div>
+<pre id="wkt-output"></pre>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/wellknown@0.5.0/wellknown.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<script>
+/* =============================== SVG anomalies (via input dossier) =============================== */
+
+const svgDefsRegistry = {
+  lines: [],   // { id, file, url, patternId }
+  points: [],  // { id, file, url }
+  fills: []    // { id, file, url, patternId }
+};
+
+let selectedLinePattern  = 'none'; // -ln.svg
+let selectedPointSymbol  = 'none'; // -pt.svg
+let selectedFillPattern  = 'none'; // -pg.svg
+
+function clearSvgRegistry(){
+  svgDefsRegistry.lines.length  = 0;
+  svgDefsRegistry.points.length = 0;
+  svgDefsRegistry.fills.length  = 0;
+
+  // Nettoie defs
+  const defs = document.getElementById('svg-defs');
+  if (defs) defs.innerHTML = '';
+
+  // Nettoie le CSS précédent
+  const old = document.querySelector('style[data-svg-anomalies-css="true"]');
+  if (old && old.parentNode) old.parentNode.removeChild(old);
+
+  selectedLinePattern = 'none';
+  selectedPointSymbol = 'none';
+  selectedFillPattern = 'none';
+}
+
+function loadSvgAnomaliesFromFiles(fileList){
+  clearSvgRegistry();
+  const files = Array.from(fileList || []).filter(f =>
+    f.name.toLowerCase().endsWith('.svg')
+  );
+
+  if (!files.length){
+    document.getElementById('svgInfo').textContent = 'Aucun SVG trouvé.';
+    buildDynamicSvgPatterns();
+    ensurePatternCSS();
+    initPalettes();
+    return;
+  }
+
+  files.forEach(file => {
+    const name  = file.name;
+    const lower = name.toLowerCase();
+    const url   = URL.createObjectURL(file);
+    const baseId = name.replace(/\.svg$/i, '');
+
+    if (lower.endsWith('-ln.svg')) {
+      const patternId = 'ln-' + baseId;
+      svgDefsRegistry.lines.push({ id: baseId, file: name, url, patternId });
+    } else if (lower.endsWith('-pt.svg')) {
+      svgDefsRegistry.points.push({ id: baseId, file: name, url });
+    } else if (lower.endsWith('-pg.svg')) {
+      const patternId = 'pg-' + baseId;
+      svgDefsRegistry.fills.push({ id: baseId, file: name, url, patternId });
+    }
+  });
+
+  document.getElementById('svgInfo').textContent =
+    `SVG chargés : ${svgDefsRegistry.lines.length} lignes, ${svgDefsRegistry.points.length} points, ${svgDefsRegistry.fills.length} remplissages.`;
+
+  buildDynamicSvgPatterns();
+  ensurePatternCSS();
+  initPalettes();
+}
+
+function buildDynamicSvgPatterns() {
+  const defs = document.getElementById('svg-defs');
+  if (!defs) return;
+  defs.innerHTML = '';
+
+  const svgNS   = 'http://www.w3.org/2000/svg';
+  const xlinkNS = 'http://www.w3.org/1999/xlink';
+
+  // 🔹 Remplissages (-pg.svg) : patterns utilisés pour les polygones
+  svgDefsRegistry.fills.forEach(entry => {
+    const pat = document.createElementNS(svgNS, 'pattern');
+    pat.setAttribute('id', entry.patternId);
+    pat.setAttribute('patternUnits', 'userSpaceOnUse');
+    pat.setAttribute('width', '32');
+    pat.setAttribute('height', '32');
+
+    const img = document.createElementNS(svgNS, 'image');
+    img.setAttributeNS(xlinkNS, 'xlink:href', entry.url);
+    img.setAttribute('width', '32');
+    img.setAttribute('height', '32');
+    img.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+
+    pat.appendChild(img);
+    defs.appendChild(pat);
+  });
+
+  // 🔹 Lignes (-ln.svg) : patterns utilisés pour les traits dans Leaflet
+  svgDefsRegistry.lines.forEach(entry => {
+    const pat = document.createElementNS(svgNS, 'pattern');
+    pat.setAttribute('id', entry.patternId);
+    pat.setAttribute('patternUnits', 'userSpaceOnUse');
+    pat.setAttribute('width', '64');   // à ajuster si tu veux
+    pat.setAttribute('height', '32');
+
+    const img = document.createElementNS(svgNS, 'image');
+    img.setAttributeNS(xlinkNS, 'xlink:href', entry.url);
+    img.setAttribute('width', '64');
+    img.setAttribute('height', '32');
+    img.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+
+    pat.appendChild(img);
+    defs.appendChild(pat);
+  });
+}
+
+function ensurePatternCSS() {
+  let css = '';
+
+  // Remplissages (polygones)
+  css += '.fill-none{fill:none !important;}\n';
+  svgDefsRegistry.fills.forEach(entry => {
+    css += `.fill-url-${entry.patternId}{fill:url(#${entry.patternId}) !important;}\n`;
+  });
+
+  // Lignes (polylignes)
+  css += '.line-none{}\n'; // classe "vide" juste pour marquer le cas "simple"
+  svgDefsRegistry.lines.forEach(entry => {
+    css += `.line-url-${entry.patternId}{stroke:url(#${entry.patternId}) !important;}\n`;
+  });
+
+  const style = document.createElement('style');
+  style.setAttribute('data-svg-anomalies-css', 'true');
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+
+/* =============================== Carte & image =============================== */
+
+let map = L.map('map', { crs: L.CRS.Simple, minZoom: -5, maxZoom: 5, zoomControl: true });
+let baseLabelZoom = map.getZoom();
+let currentBounds = L.latLngBounds([[0,0],[1000,1000]]);
+let imageOverlay = null;
+let currentImage = { url: null, width: 1000, height: 1000, imgEl: null };
+
+function toXY(ll){
+  const H = Math.round((currentImage && currentImage.height) || 0);
+  return { x: ll.lng, y: H - ll.lat };
+}
+
+const EXPORT_COLOR_FILTER  = 'saturate(1.35) contrast(1.12) brightness(1.05)';
+const EXPORT_STROKE_BOOST  = 1.15;
+const EXPORT_SYMBOL_SCALE  = 4;
+
+/* =============================== Helpers image =============================== */
+
+function ensureImageDecoded(img) {
+  return new Promise((resolve) => {
+    if ('decode' in img) {
+      img.decode().then(resolve).catch(() => {
+        if (img.complete) resolve();
+        else img.onload = () => resolve();
+      });
+    } else {
+      if (img.complete) resolve();
+      else img.onload = () => resolve();
+    }
+  });
+}
+
+function setMapForImage(url, imgWidth, imgHeight, imgElOptional) {
+  currentBounds = L.latLngBounds([[0,0],[imgHeight, imgWidth]]);
+  if (imageOverlay) { map.removeLayer(imageOverlay); imageOverlay = null; }
+  imageOverlay = L.imageOverlay(url, currentBounds).addTo(map);
+  try { map.setMaxBounds(currentBounds.pad(0.0)); } catch(_) {}
+  map.fitBounds(currentBounds, { animate: false, padding: [0,0] });
+  baseLabelZoom = map.getZoom();
+  try { map.invalidateSize(); } catch(_) {}
+  currentImage = { url, width: imgWidth, height: imgHeight, imgEl: imgElOptional || null };
+  const info = document.getElementById('bgInfo');
+  if (info) info.textContent = `Image: ${Math.round(imgWidth)}×${Math.round(imgHeight)} px`;
+}
+
+function loadBackgroundFromURL(url) {
+  return new Promise((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => {
+      setMapForImage(url, im.naturalWidth || im.width, im.naturalHeight || im.height, im);
+      resolve();
+    };
+    im.onerror = reject;
+    im.src = url;
+  });
+}
+
+function resetAllDrawn() {
+  drawnItems.clearLayers();
+  shapes.length = 0;
+  buildTree();
+  refreshWktPanel();
+}
+
+/* =============================== Leaflet.Draw =============================== */
+
+const drawnItems = new L.FeatureGroup();
+map.addLayer(drawnItems);
+
+const drawControl = new L.Control.Draw({
+  edit: { featureGroup: drawnItems, poly: { allowIntersection: false } },
+  draw: {
+    polygon: true,
+    polyline: true,
+    rectangle: true,
+    marker: true,
+    circle: true,
+    circlemarker: false
+  }
+});
+map.addControl(drawControl);
+
+/* =============================== État & structures =============================== */
+
+const shapes = [];
+let activePopover = null;
+let fillPaletteMinBtn = null;
+let pointPaletteMinBtn = null;
+let linePaletteMinBtn = null;
+
+const treeContainer = document.getElementById('treeView');
+const wktOutput = document.getElementById('wkt-output');
+
+/* =============================== Utils couleurs =============================== */
+
+function hexToRgbaString(hex) {
+  if (!hex) return null;
+  let h = hex.trim();
+  if (h[0] === '#') h = h.slice(1);
+  if (![6,8].includes(h.length)) return null;
+  const r = parseInt(h.slice(0,2),16);
+  const g = parseInt(h.slice(2,4),16);
+  const b = parseInt(h.slice(4,6),16);
+  const a = (h.length === 8) ? (parseInt(h.slice(6,8),16)/255) : 1;
+  return `rgba(${r},${g},${b},${isNaN(a)?1:a})`;
+}
+
+function parseColor(value, fallback = '#3388ff') {
+  if (!value) return fallback;
+  const s = String(value).trim();
+  if (!s) return fallback;
+
+  if (s.startsWith('#')) {
+    return hexToRgbaString(s) || fallback;
+  }
+
+  const m = s.match(/^rgba?\s*\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})(?:\s*,\s*([0-9]*\.?[0-9]+))?\s*\)$/i);
+  if (m) {
+    let r = Math.max(0, Math.min(255, parseInt(m[1],10)));
+    let g = Math.max(0, Math.min(255, parseInt(m[2],10)));
+    let b = Math.max(0, Math.min(255, parseInt(m[3],10)));
+    let a = (m[4] !== undefined) ? parseFloat(m[4]) : 1;
+    if (isNaN(a) || a < 0) a = 0;
+    if (a > 1) a = 1;
+    return `rgba(${r},${g},${b},${a})`;
+  }
+
+  return fallback;
+}
+
+/* =============================== WKT helpers =============================== */
+
+function layerToWkt(layer) {
+  if (layer instanceof L.Circle) {
+    const c = layer.getLatLng();
+    const r = layer.getRadius();
+    return `CIRCLE(${c.lng} ${c.lat}, ${r})`;
+  }
+  const gj = layer.toGeoJSON();
+  return wellknown.stringify(gj.geometry);
+}
+
+function layerFromWkt(wkt, color='#3388ff', pointIcon=null) {
+  const m = (wkt||'').trim().match(/^CIRCLE\(\s*([-\d.]+)\s+([-\d.]+)\s*,\s*([-\d.]+)\s*\)$/i);
+  if (m) {
+    const lng = parseFloat(m[1]);
+    const lat = parseFloat(m[2]);
+    const radius = parseFloat(m[3]);
+    return L.circle([lat,lng], { radius, color });
+  }
+  const g = wellknown.parse(wkt);
+  switch (g.type) {
+    case 'Point': {
+      const [lng,lat] = g.coordinates;
+      return pointIcon ? L.marker([lat,lng], { icon:pointIcon }) : L.marker([lat,lng]);
+    }
+    case 'LineString':
+      return L.polyline(g.coordinates.map(([x,y])=>[y,x]), { color });
+    case 'Polygon':
+      return L.polygon(g.coordinates.map(r=>r.map(([x,y])=>[y,x])), { color });
+    case 'MultiPolygon': {
+      const polys = g.coordinates.map(poly=>poly.map(ring=>ring.map(([x,y])=>[y,x])));
+      return L.polygon(polys, { color });
+    }
+    default:
+      throw new Error('Type de géométrie non supporté : ' + g.type);
+  }
+}
+
+/* =============================== Application patterns =============================== */
+
+function applyFillPattern(layer, patternId) {
+  if (!((layer instanceof L.Polygon) || (layer instanceof L.Rectangle) || (layer instanceof L.Circle))) return;
+  const path = layer._path || (layer.getElement && layer.getElement());
+  if (!path) { setTimeout(() => applyFillPattern(layer, patternId), 0); return; }
+  Array.from(path.classList).forEach(c => {
+    if (c.startsWith('fill-url-') || c === 'fill-none') path.classList.remove(c);
+  });
+  if (!patternId || patternId === 'none') {
+    path.classList.add('fill-none');
+  } else {
+    path.classList.add('fill-url-' + patternId);
+  }
+}
+
+function applyLinePattern(layer, patternId) {
+  // On ne traite que les vraies polylignes (pas les polygones)
+  if (!(layer instanceof L.Polyline) || (layer instanceof L.Polygon)) return;
+
+  const path = layer._path || (layer.getElement && layer.getElement());
+  if (!path) {
+    // Le path Leaflet peut ne pas être dispo immédiatement → on réessaie
+    layer.once && layer.once('add', () => applyLinePattern(layer, patternId));
+    setTimeout(() => applyLinePattern(layer, patternId), 0);
+    return;
+  }
+
+  // Mémorise le style de base si ce n'est pas déjà fait
+  if (!layer._origStroke) {
+    const st = window.getComputedStyle(path);
+    layer._origStroke = {
+      color:   layer.options.color   || st.stroke || '#3388ff',
+      width:   (layer.options.weight != null ? layer.options.weight : parseFloat(st.strokeWidth) || 3),
+      opacity: (layer.options.opacity != null
+                ? layer.options.opacity
+                : (st.strokeOpacity ? parseFloat(st.strokeOpacity) : 1))
+    };
+  }
+
+  // Supprime les anciens segments HTML éventuels
+  if (layer._lineSegments && Array.isArray(layer._lineSegments)) {
+    layer._lineSegments.forEach(div => {
+      if (div && div.parentNode) div.parentNode.removeChild(div);
+    });
+  }
+  layer._lineSegments = [];
+  layer._currentLinePatternId = patternId || 'none';
+
+  // Cas "aucun motif" → simple ligne Leaflet
+  if (!patternId || patternId === 'none') {
+    path.style.stroke      = layer._origStroke.color;
+    path.style.strokeWidth = layer._origStroke.width;
+    path.style.opacity     = layer._origStroke.opacity;
+    return;
+  }
+
+  // On accepte soit le patternId (ln-xxx), soit directement l'id (xxx)
+  const entry = svgDefsRegistry.lines.find(
+    l => l.patternId === patternId || l.id === patternId
+  );
+
+  // Si pas de SVG correspondant → on retombe sur la ligne simple
+  if (!entry) {
+    path.style.stroke      = layer._origStroke.color;
+    path.style.strokeWidth = layer._origStroke.width;
+    path.style.opacity     = layer._origStroke.opacity;
+    return;
+  }
+
+  const latlngs = layer.getLatLngs();
+  const pts = Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
+  if (!pts || pts.length < 2) {
+    return;
+  }
+
+  const mapEl = map.getContainer();
+  const currentPatternId = patternId;
+  layer._currentLinePatternId = currentPatternId;
+
+  // On garde la ligne "normale" visible le temps de charger l'image
+  loadImage(entry.url).then(img => {
+    // Si entre temps on a changé de motif, on annule
+    if (layer._currentLinePatternId !== currentPatternId) return;
+
+    // On supprime les éventuels segments précédents (au cas où)
+    if (layer._lineSegments && Array.isArray(layer._lineSegments)) {
+      layer._lineSegments.forEach(div => {
+        if (div && div.parentNode) div.parentNode.removeChild(div);
+      });
+    }
+    layer._lineSegments = [];
+
+    const natH = img.height || 20;
+    const thickness = natH; // épaisseur en px à l'écran
+
+    const newSegments = [];
+
+    for (let i = 0; i < pts.length - 1; i++) {
+      const A = map.latLngToContainerPoint(pts[i]);
+      const B = map.latLngToContainerPoint(pts[i + 1]);
+      const dx = B.x - A.x;
+      const dy = B.y - A.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (!len) continue;
+
+      const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+      const cx = (A.x + B.x) / 2;
+      const cy = (A.y + B.y) / 2;
+
+      const seg = document.createElement('div');
+      seg.className = 'line-svg-segment';
+
+      // ⬇️ On ajoute un léger chevauchement (+2 px) pour éviter
+      // tout "trou" entre 2 segments quand on zoom/dézoom
+      const width  = len + 2;
+      const height = thickness;
+
+      seg.style.width  = width  + 'px';
+      seg.style.height = height + 'px';
+      seg.style.left   = (cx - width  / 2) + 'px';
+      seg.style.top    = (cy - height / 2) + 'px';
+      seg.style.transformOrigin  = '50% 50%';
+      seg.style.transform        = `rotate(${angleDeg}deg)`;
+      seg.style.backgroundImage  = `url('${entry.url}')`;
+      seg.style.backgroundSize   = '100% 100%';
+      seg.style.backgroundRepeat = 'no-repeat';
+      seg.style.pointerEvents    = 'none';
+
+      mapEl.appendChild(seg);
+      newSegments.push(seg);
+    }
+
+    layer._lineSegments = newSegments;
+
+    // Maintenant qu'on a les rubans SVG, on cache le trait de base
+    path.style.stroke      = 'none';
+    path.style.strokeWidth = layer._origStroke.width;
+    path.style.opacity     = layer._origStroke.opacity;
+  }).catch(err => {
+    console.error('Erreur chargement SVG ligne', err);
+  });
+}
+
+function refreshLinePatternsOnMap() {
+  shapes.forEach(item => {
+    const layer = item.layer;
+    if (layer instanceof L.Polyline && !(layer instanceof L.Polygon)) {
+      const pid = item.linePattern || 'none';
+      applyLinePattern(layer, pid);
+    }
+  });
+}
+
+/* =============================== Icônes ponctuels SVG =============================== */
+
+function getPointIcon(symbolId) {
+  if (!symbolId || symbolId === 'none') return null;
+  const entry = svgDefsRegistry.points.find(p => p.id === symbolId);
+  if (!entry) return null;
+  return L.divIcon({
+    className: 'svg-point-icon',
+    html: `<img src="${entry.url}" alt="${entry.id}">`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12]
+  });
+}
+
+/* =============================== TreeView & sélection =============================== */
+
+function getLayerType(layer){
+  if (layer instanceof L.Marker) return 'Points';
+  if (layer instanceof L.Circle) return 'Cercles';
+  if (layer instanceof L.Rectangle) return 'Rectangles';
+  if (layer instanceof L.Polygon) return 'Polygones';
+  if (layer instanceof L.Polyline) return 'Polylignes';
+  return 'Autre';
+}
+
+function centerOnLayer(layer){
+  const go = () => {
+    if (layer?.getBounds) map.fitBounds(layer.getBounds(), { padding:[20,20] });
+    else if (layer?.getLatLng) map.setView(layer.getLatLng(), Math.max(map.getZoom(),2));
+  };
+  requestAnimationFrame(()=>requestAnimationFrame(go));
+}
+
+function buildTree(){
+  const groups = {};
+  shapes.forEach(s => {
+    const t = getLayerType(s.layer);
+    (groups[t] || (groups[t] = [])).push(s);
+  });
+  treeContainer.innerHTML = '';
+  for (const [type, items] of Object.entries(groups)){
+    const wrapper = document.createElement('ul');
+    wrapper.style.listStyle='none';
+    wrapper.style.paddingLeft='15px';
+    wrapper.style.margin='6px 0';
+
+    const folderLi = document.createElement('li');
+    folderLi.textContent = `${type} (${items.length})`;
+    folderLi.style.fontWeight='bold';
+    folderLi.style.cursor='pointer';
+
+    const listUl = document.createElement('ul');
+    listUl.style.listStyle='none';
+    listUl.style.marginLeft='20px';
+
+    folderLi.addEventListener('click', e => {
+      e.stopPropagation();
+      listUl.style.display = (listUl.style.display === 'none') ? 'block' : 'none';
+    });
+
+    items.forEach(({id,name,layer,color})=>{
+      const li = document.createElement('li');
+      li.style.cursor='pointer';
+      li.style.display='flex';
+      li.style.alignItems='center';
+      li.style.gap='6px';
+      li.style.padding='2px 4px';
+
+      const dot = document.createElement('span');
+      dot.style.cssText = `display:inline-block;width:12px;height:12px;border-radius:50%;background:${color||'#3388ff'}`;
+      const text = document.createElement('span');
+      text.textContent = name;
+
+      li.appendChild(dot);
+      li.appendChild(text);
+
+      li.addEventListener('click', e => {
+        e.stopPropagation();
+        setSelected(layer);
+      });
+
+      listUl.appendChild(li);
+      layer._treeLi = li;
+    });
+
+    wrapper.appendChild(folderLi);
+    wrapper.appendChild(listUl);
+    treeContainer.appendChild(wrapper);
+  }
+}
+
+function setSelected(layer){
+  shapes.forEach(s => {
+    if (s.layer._treeLi) s.layer._treeLi.style.backgroundColor='';
+    if (s.layer instanceof L.Polyline && !(s.layer instanceof L.Polygon)) {
+      s.layer.setStyle && s.layer.setStyle({ color:s.color, fill:false });
+      if (s.linePattern) applyLinePattern(s.layer, s.linePattern);
+    } else if ((s.layer instanceof L.Polygon)||(s.layer instanceof L.Rectangle)||(s.layer instanceof L.Circle)) {
+      s.layer.setStyle && s.layer.setStyle({ color:s.color, fill:true, fillOpacity:1 });
+      if (s.fillPattern) applyFillPattern(s.layer, s.fillPattern);
+    } else if (s.layer.setStyle) {
+      s.layer.setStyle({ color:s.color });
+    }
+  });
+
+  if (layer._treeLi) layer._treeLi.style.backgroundColor='#d0eaff';
+
+  const sh = shapes.find(s => s.layer === layer);
+  if (layer instanceof L.Polyline && !(layer instanceof L.Polygon)) {
+    layer.setStyle && layer.setStyle({ color:'red', fill:false });
+    if (sh && sh.linePattern) applyLinePattern(layer, sh.linePattern);
+  } else if ((layer instanceof L.Polygon)||(layer instanceof L.Rectangle)||(layer instanceof L.Circle)) {
+    layer.setStyle && layer.setStyle({ color:'red', fill:true, fillOpacity:1 });
+    if (sh && sh.fillPattern) applyFillPattern(layer, sh.fillPattern);
+  } else if (layer.setStyle) {
+    layer.setStyle({ color:'red' });
+  }
+
+  centerOnLayer(layer);
+}
+
+function refreshWktPanel(){
+  const lines = shapes.map(s => `${s.name}: ${layerToWkt(s.layer)}`);
+  wktOutput.textContent = lines.join('\n\n') + (lines.length? '\n' : '');
+}
+
+/* =============================== Étiquettes + connecteurs =============================== */
+
+function escapeHtml(str){
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function getCurrentLabelFontPx() {
+  const el = document.getElementById('labelFontInput');
+  if (!el) return 12;
+  const v = parseFloat(el.value);
+  return (isNaN(v) || v <= 0) ? 12 : v;
+}
+
+function buildLabelHTML(text, color, photosStr, fontPx){
+  const safeText   = escapeHtml(text || '');
+  const safeColor  = color || '#3388ff';
+  const photos     = (photosStr || '').toString().trim();
+  const size       = fontPx || 12;
+  const photosSize = Math.max(6, size * 0.8);
+
+  let photosHtml = '';
+  if (photos) {
+    photosHtml = `
+      <div class="mgc-label-photos" style="font-size:${photosSize}px;">
+        ${escapeHtml(photos)}
+      </div>`;
+  }
+
+  return `
+    <div class="mgc-label" style="color:${safeColor}; font-size:${size}px;">
+      <div class="mgc-label-main">
+        <span class="mgc-label-text">${safeText}</span>
+        <div class="mgc-label-line"></div>
+      </div>
+      ${photosHtml}
+    </div>`;
+}
+
+function createLabelMarker(latlng, text, color, photosStr, fontPx){
+  const size = fontPx || getCurrentLabelFontPx();
+  return L.marker(latlng, {
+    draggable: true,
+    interactive: true,
+    icon: L.divIcon({
+      className: 'mgc-label-wrapper',
+      html: buildLabelHTML(text, color, photosStr, size),
+      iconSize: null,
+      iconAnchor: [0, 0]
+    })
+  });
+}
+
+function getConnectionPoint(layer, labelLatLng){
+  if (layer instanceof L.Marker) return layer.getLatLng();
+  if (layer instanceof L.Circle) {
+    const c = layer.getLatLng();
+    const r = layer.getRadius();
+    const dx = labelLatLng.lng - c.lng;
+    const dy = labelLatLng.lat - c.lat;
+    const d = Math.sqrt(dx*dx + dy*dy);
+    if (d === 0) return c;
+    return L.latLng(c.lat + (dy/d)*r, c.lng + (dx/d)*r);
+  }
+  if ((layer instanceof L.Polygon)||(layer instanceof L.Polyline)||(layer instanceof L.Rectangle)) {
+    const latlngs = layer.getLatLngs();
+    let pts = [];
+    if (Array.isArray(latlngs[0])) latlngs.forEach(r => pts = pts.concat(r));
+    else pts = latlngs;
+    const center = layer.getBounds().getCenter();
+    const dx = labelLatLng.lng - center.lng;
+    const dy = labelLatLng.lat - center.lat;
+    const len = Math.sqrt(dx*dx + dy*dy);
+    if (len === 0) return center;
+    let best = pts[0], score = -Infinity;
+    pts.forEach(pt => {
+      const vx = pt.lng - center.lng;
+      const vy = pt.lat - center.lat;
+      const dot = (vx*dx + vy*dy) / len;
+      if (dot > score){ score = dot; best = pt; }
+    });
+    return best;
+  }
+  if (layer.getBounds) return layer.getBounds().getCenter();
+  if (layer.getLatLng) return layer.getLatLng();
+  return map.getCenter();
+}
+
+function getLabelLineAttach(labelMarker, geomPoint) {
+  if (!labelMarker || !labelMarker._icon) {
+    return labelMarker ? labelMarker.getLatLng() : null;
+  }
+
+  const icon = labelMarker._icon;
+  const lineEl = icon.querySelector('.mgc-label-line');
+  if (!lineEl) return labelMarker.getLatLng();
+
+  const mapEl    = map.getContainer();
+  const mapRect  = mapEl.getBoundingClientRect();
+  const lineRect = lineEl.getBoundingClientRect();
+
+  let side = 'right';
+  if (geomPoint) {
+    const geoPt = map.latLngToContainerPoint(geomPoint);
+    const lineCenterX = lineRect.left + lineRect.width / 2;
+    side = (geoPt.x < lineCenterX) ? 'left' : 'right';
+  }
+
+  const attachScreenX = (side === 'left') ? lineRect.left : lineRect.right;
+  const attachScreenY = lineRect.top + lineRect.height / 2;
+
+  const containerPt = L.point(
+    attachScreenX - mapRect.left,
+    attachScreenY - mapRect.top
+  );
+  return map.containerPointToLatLng(containerPt);
+}
+
+function updateLabelConnector(item){
+  if (!item || !item.labelMarker || !item.connectorLine || !item.layer) return;
+
+  const labelPos  = item.labelMarker.getLatLng();
+  const geomPoint = getConnectionPoint(item.layer, labelPos);
+  const attach    = getLabelLineAttach(item.labelMarker, geomPoint);
+
+  if (geomPoint && attach) {
+    item.connectorLine.setLatLngs([geomPoint, attach]);
+  }
+}
+
+function updateAllLabelConnectors(){
+  shapes.forEach(updateLabelConnector);
+}
+
+function updateLabelScale() {
+  if (baseLabelZoom == null) baseLabelZoom = map.getZoom();
+  const zoom = map.getZoom();
+  const scale = Math.pow(2, zoom - baseLabelZoom);
+
+  shapes.forEach(item => {
+    const m = item.labelMarker;
+    if (!m || !m._icon) return;
+    const labelEl = m._icon.querySelector('.mgc-label');
+    if (!labelEl) return;
+    labelEl.style.transform = `translateX(-50%) scale(${scale})`;
+    labelEl.style.transformOrigin = 'center bottom';
+  });
+}
+
+/* Bouton "Afficher les noms" */
+
+document.getElementById('showLabelsBtn').addEventListener('click', () => {
+  shapes.forEach(item => {
+    const { id, layer } = item;
+
+    if (item.labelMarker) {
+      map.removeLayer(item.labelMarker);
+      item.labelMarker = null;
+    }
+    if (item.connectorLine) {
+      map.removeLayer(item.connectorLine);
+      item.connectorLine = null;
+    }
+
+    let latlng =
+      item.labelPos ||
+      (layer.getBounds ? layer.getBounds().getCenter()
+       : (layer.getLatLng ? layer.getLatLng()
+       : map.getCenter()));
+
+    const text   = item.labelText || item.name || `Objet ${id}`;
+    const color  = item.color || '#3388ff';
+    const photos = item.photos || '';
+    const fontPx = item.textHeight || getCurrentLabelFontPx();
+
+    const labelMarker = createLabelMarker(latlng, text, color, photos, fontPx).addTo(map);
+    item.labelMarker  = labelMarker;
+    item.textHeight   = fontPx;
+    item.labelPos     = latlng;
+
+    const geomPoint  = getConnectionPoint(layer, latlng);
+    const connector  = L.polyline(
+      [geomPoint, latlng],
+      { color: color, weight: 1, interactive:false }
+    ).addTo(map);
+
+    item.connectorLine = connector;
+    updateLabelConnector(item);
+
+    labelMarker.on('drag', e => {
+      const newPos = e.target.getLatLng();
+      item.labelPos = newPos;
+      updateLabelConnector(item);
+    });
+    labelMarker.on('dragend', e => {
+      const newPos = e.target.getLatLng();
+      item.labelPos = newPos;
+      updateLabelConnector(item);
+    });
+  });
+
+  updateLabelScale();
+  updateAllLabelConnectors();
+});
+
+/* =============================== Popovers & palettes =============================== */
+
+function attachPopoverGuards(el){
+  const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+  ['click','dblclick','mousedown','mouseup','mousemove','wheel','contextmenu','touchstart','touchmove','touchend','pointerdown','pointerup']
+    .forEach(evt => el.addEventListener(evt, stop, { passive:false }));
+  if (window.L && L.DomEvent) {
+    L.DomEvent.disableClickPropagation(el);
+    L.DomEvent.disableScrollPropagation(el);
+  }
+}
+
+function highlightSelected(root, selector, valueAttr, currentValue){
+  root.querySelectorAll(selector).forEach(n => n.classList.remove('selected'));
+  if (!currentValue) return;
+  const sel = root.querySelector(`${selector}[${valueAttr}="${currentValue}"]`);
+  if (sel) sel.classList.add('selected');
+}
+
+function hideActivePopover(){
+  if (activePopover && activePopover.parentNode) {
+    activePopover.parentNode.removeChild(activePopover);
+  }
+  activePopover = null;
+}
+
+function showPopoverNearButton(btnEl, popoverEl){
+  hideActivePopover();
+  const mapEl = map.getContainer();
+  const mapRect = mapEl.getBoundingClientRect();
+  const br = btnEl.getBoundingClientRect();
+  popoverEl.style.left = (br.right - mapRect.left + 8) + 'px';
+  popoverEl.style.top  = (br.top   - mapRect.top) + 'px';
+  mapEl.appendChild(popoverEl);
+  activePopover = popoverEl;
+}
+
+/* --- Fill (-pg.svg) --- */
+
+function makeFillPopover(){
+  const div = document.createElement('div');
+  div.className='popover-palette';
+  let html = '<div class="popover-title">Remplissage (-pg.svg)</div><div class="swatch-row">';
+  html += '<div class="swatch swatch-none" data-fill="none" title="Aucun"></div>';
+  svgDefsRegistry.fills.forEach(entry => {
+    html += `<div class="swatch" data-fill="${entry.patternId}" title="${entry.file}"
+      style="background-image:url('${entry.url}');"></div>`;
+  });
+  html += '</div>';
+  div.innerHTML = html;
+  attachPopoverGuards(div);
+  highlightSelected(div, '.swatch', 'data-fill', selectedFillPattern);
+  div.addEventListener('click', e => {
+    const sw = e.target.closest('.swatch');
+    if (!sw) return;
+    selectedFillPattern = sw.dataset.fill || 'none';
+    highlightSelected(div, '.swatch', 'data-fill', selectedFillPattern);
+    minimizeFillPalette();
+  });
+  return div;
+}
+
+function ensureMinimizedFillButton(){
+  const mapEl = map.getContainer();
+  if (fillPaletteMinBtn && fillPaletteMinBtn.parentNode) return fillPaletteMinBtn;
+  const div = document.createElement('div');
+  div.className='palette-min';
+  div.innerHTML=`<div class="preview"></div><div class="label">Remplissage ▸</div>`;
+  div.addEventListener('click', () => toggleFillPalette());
+  mapEl.appendChild(div);
+  fillPaletteMinBtn = div;
+  updateFillMinPreview();
+  return div;
+}
+
+function updateFillMinPreview(){
+  if (!fillPaletteMinBtn) return;
+  const preview = fillPaletteMinBtn.querySelector('.preview');
+  if (selectedFillPattern && selectedFillPattern !== 'none') {
+    const entry = svgDefsRegistry.fills.find(f => f.patternId === selectedFillPattern);
+    if (entry) {
+      preview.style.backgroundImage = `url('${entry.url}')`;
+      preview.style.backgroundSize = 'contain';
+      preview.style.backgroundRepeat = 'repeat';
+      return;
+    }
+  }
+  preview.style.backgroundImage = 'none';
+  preview.style.backgroundColor = '#fff';
+}
+
+function minimizeFillPalette(){
+  hideActivePopover();
+  ensureMinimizedFillButton();
+  updateFillMinPreview();
+}
+
+function expandFillPalette(){
+  const tb = document.querySelector('.leaflet-draw-toolbar-top, .leaflet-draw-toolbar');
+  const anchor = tb && (tb.querySelector('.leaflet-draw-draw-polygon')
+                     || tb.querySelector('.leaflet-draw-draw-rectangle')
+                     || tb.querySelector('.leaflet-draw-draw-circle')
+                     || tb);
+  if (!anchor) return;
+  showPopoverNearButton(anchor, makeFillPopover());
+}
+
+function toggleFillPalette(){
+  if (activePopover) minimizeFillPalette();
+  else expandFillPalette();
+}
+
+/* --- Points (-pt.svg) --- */
+
+function makePointPopover(){
+  const div = document.createElement('div');
+  div.className='popover-palette';
+  let html = '<div class="popover-title">Points (-pt.svg)</div><div class="swatch-row">';
+  html += '<div class="swatch swatch-none" data-point="none" title="Marqueur simple"></div>';
+  svgDefsRegistry.points.forEach(entry => {
+    html += `<div class="swatch" data-point="${entry.id}" title="${entry.file}"
+      style="background-image:url('${entry.url}');background-size:contain;background-repeat:no-repeat;"></div>`;
+  });
+  html += '</div>';
+  div.innerHTML = html;
+  attachPopoverGuards(div);
+  highlightSelected(div, '.swatch', 'data-point', selectedPointSymbol);
+  div.addEventListener('click', e => {
+    const sw = e.target.closest('.swatch');
+    if (!sw) return;
+    selectedPointSymbol = sw.dataset.point || 'none';
+    highlightSelected(div, '.swatch', 'data-point', selectedPointSymbol);
+    minimizePointPalette();
+  });
+  return div;
+}
+
+function ensureMinimizedPointButton(){
+  const mapEl = map.getContainer();
+  if (pointPaletteMinBtn && pointPaletteMinBtn.parentNode) return pointPaletteMinBtn;
+  const div = document.createElement('div');
+  div.className='palette-min secondary';
+  div.innerHTML=`<div class="preview"></div><div class="label">Points ▸</div>`;
+  div.addEventListener('click', () => togglePointPalette());
+  mapEl.appendChild(div);
+  pointPaletteMinBtn = div;
+  updatePointMinPreview();
+  return div;
+}
+
+function updatePointMinPreview(){
+  if (!pointPaletteMinBtn) return;
+  const preview = pointPaletteMinBtn.querySelector('.preview');
+  if (selectedPointSymbol && selectedPointSymbol !== 'none') {
+    const entry = svgDefsRegistry.points.find(p => p.id === selectedPointSymbol);
+    if (entry) {
+      preview.style.backgroundImage = `url('${entry.url}')`;
+      preview.style.backgroundSize = 'contain';
+      preview.style.backgroundRepeat = 'no-repeat';
+      return;
+    }
+  }
+  preview.style.backgroundImage='none';
+  preview.style.backgroundColor='#fff';
+}
+
+function minimizePointPalette(){
+  hideActivePopover();
+  ensureMinimizedPointButton();
+  updatePointMinPreview();
+}
+
+function expandPointPalette(){
+  const tb = document.querySelector('.leaflet-draw-toolbar-top, .leaflet-draw-toolbar');
+  const anchor = tb && (tb.querySelector('.leaflet-draw-draw-marker') || tb);
+  if (!anchor) return;
+  showPopoverNearButton(anchor, makePointPopover());
+}
+
+function togglePointPalette(){
+  if (activePopover) minimizePointPalette();
+  else expandPointPalette();
+}
+
+/* --- Lignes (-ln.svg) --- */
+
+function makeLinePopover(){
+  const div = document.createElement('div');
+  div.className='popover-palette';
+  let html = '<div class="popover-title">Lignes (-ln.svg)</div><div class="swatch-row">';
+  html += '<div class="swatch swatch-none" data-line="none" title="Ligne simple"></div>';
+  svgDefsRegistry.lines.forEach(entry => {
+    html += `<div class="swatch" data-line="${entry.patternId}" title="${entry.file}"
+      style="background-image:url('${entry.url}');background-size:contain;background-repeat:repeat-x;"></div>`;
+  });
+  html += '</div>';
+  div.innerHTML = html;
+  attachPopoverGuards(div);
+  highlightSelected(div, '.swatch', 'data-line', selectedLinePattern);
+  div.addEventListener('click', e => {
+    const sw = e.target.closest('.swatch');
+    if (!sw) return;
+    selectedLinePattern = sw.dataset.line || 'none';
+    highlightSelected(div, '.swatch', 'data-line', selectedLinePattern);
+    minimizeLinePalette();
+  });
+  return div;
+}
+
+function ensureMinimizedLineButton(){
+  const mapEl = map.getContainer();
+  if (linePaletteMinBtn && linePaletteMinBtn.parentNode) return linePaletteMinBtn;
+  const div = document.createElement('div');
+  div.className='palette-min tertiary';
+  div.innerHTML=`<div class="preview"></div><div class="label">Lignes ▸</div>`;
+  div.addEventListener('click', () => toggleLinePalette());
+  mapEl.appendChild(div);
+  linePaletteMinBtn = div;
+  updateLineMinPreview();
+  return div;
+}
+
+function updateLineMinPreview(){
+  if (!linePaletteMinBtn) return;
+  const preview = linePaletteMinBtn.querySelector('.preview');
+  if (selectedLinePattern && selectedLinePattern !== 'none') {
+    const entry = svgDefsRegistry.lines.find(l => l.patternId === selectedLinePattern);
+    if (entry) {
+      preview.style.backgroundImage = `url('${entry.url}')`;
+      preview.style.backgroundSize = 'contain';
+      preview.style.backgroundRepeat = 'repeat-x';
+      return;
+    }
+  }
+  preview.style.backgroundImage='none';
+  preview.style.backgroundColor='#fff';
+}
+
+function minimizeLinePalette(){
+  hideActivePopover();
+  ensureMinimizedLineButton();
+  updateLineMinPreview();
+}
+
+function expandLinePalette(){
+  const tb = document.querySelector('.leaflet-draw-toolbar-top, .leaflet-draw-toolbar');
+  const anchor = tb && (tb.querySelector('.leaflet-draw-draw-polyline') || tb);
+  if (!anchor) return;
+  showPopoverNearButton(anchor, makeLinePopover());
+}
+
+function toggleLinePalette(){
+  if (activePopover) minimizeLinePalette();
+  else expandLinePalette();
+}
+
+/* Init global palettes après chargement SVG */
+function initPalettes(){
+  ensureMinimizedFillButton();
+  ensureMinimizedPointButton();
+  ensureMinimizedLineButton();
+}
+
+/* =============================== Wiring toolbar =============================== */
+
+function wireToolbarPopovers(){
+  const tb = document.querySelector('.leaflet-draw-toolbar-top, .leaflet-draw-toolbar');
+  if (!tb) return;
+  const btnPolygon = tb.querySelector('.leaflet-draw-draw-polygon');
+  const btnRect    = tb.querySelector('.leaflet-draw-draw-rectangle');
+  const btnCircle  = tb.querySelector('.leaflet-draw-draw-circle');
+  const btnMarker  = tb.querySelector('.leaflet-draw-draw-marker');
+  const btnLine    = tb.querySelector('.leaflet-draw-draw-polyline');
+
+  if (btnPolygon) btnPolygon.addEventListener('click', () => expandFillPalette());
+  if (btnRect)    btnRect.addEventListener('click', () => expandFillPalette());
+  if (btnCircle)  btnCircle.addEventListener('click', () => expandFillPalette());
+  if (btnMarker)  btnMarker.addEventListener('click', () => expandPointPalette());
+  if (btnLine)    btnLine.addEventListener('click', () => expandLinePalette());
+
+  initPalettes();
+}
+
+setTimeout(wireToolbarPopovers, 0);
+map.on(L.Draw.Event.CREATED, () => hideActivePopover());
+
+/* =============================== Création via Leaflet.Draw =============================== */
+
+map.on(L.Draw.Event.CREATED, function (event) {
+  let layer = event.layer;
+
+  if (layer instanceof L.Marker) {
+    const ic = getPointIcon(selectedPointSymbol);
+    if (ic) layer.setIcon(ic);
+  }
+  drawnItems.addLayer(layer);
+
+  const color = '#3388ff';
+
+  if (layer instanceof L.Polyline && !(layer instanceof L.Polygon)) {
+    layer.setStyle && layer.setStyle({ color, fill:false });
+    if (selectedLinePattern && selectedLinePattern !== 'none') {
+      applyLinePattern(layer, selectedLinePattern);
+    }
+  } else if ((layer instanceof L.Polygon)||(layer instanceof L.Rectangle)||(layer instanceof L.Circle)) {
+    layer.setStyle && layer.setStyle({ color, fill:true, fillOpacity:1 });
+    if (selectedFillPattern && selectedFillPattern !== 'none') {
+      applyFillPattern(layer, selectedFillPattern);
+    }
+  } else if (layer.setStyle) {
+    layer.setStyle({ color });
+  }
+
+  const wkt  = layerToWkt(layer);
+  const id   = shapes.length + 1;
+  const name = `Objet ${id}`;
+
+  const item = {
+    id,
+    name,
+    layer,
+    wkt,
+    color,
+    fillPattern: ((layer instanceof L.Polygon)||(layer instanceof L.Rectangle)||(layer instanceof L.Circle)) ? selectedFillPattern : null,
+    linePattern: (layer instanceof L.Polyline && !(layer instanceof L.Polygon)) ? selectedLinePattern : null,
+    pointSymbol: (layer instanceof L.Marker) ? selectedPointSymbol : null,
+    labelText: name,
+    photos: '',
+    textHeight: getCurrentLabelFontPx()
+  };
+
+  shapes.push(item);
+  layer.on('click', () => setSelected(layer));
+  buildTree();
+  refreshWktPanel();
+  setSelected(layer);
+  centerOnLayer(layer);
+});
+
+/* =============================== Éditions / suppressions =============================== */
+
+map.on(L.Draw.Event.EDITED, function (e) {
+  e.layers.eachLayer(function (layer) {
+    const it = shapes.find(s => s.layer === layer);
+    if (it) {
+      it.wkt = layerToWkt(layer);
+      if (it.fillPattern && ((layer instanceof L.Polygon)||(layer instanceof L.Rectangle)||(layer instanceof L.Circle))) {
+        applyFillPattern(layer, it.fillPattern);
+      }
+      if (it.linePattern && (layer instanceof L.Polyline) && !(layer instanceof L.Polygon)) {
+        applyLinePattern(layer, it.linePattern);
+      }
+      updateLabelConnector(it);
+    }
+  });
+  refreshWktPanel();
+});
+
+map.on(L.Draw.Event.DELETED, function (event) {
+  const layers = event.layers;
+  const toDelete = [];
+  layers.eachLayer(layer => {
+    const index = shapes.findIndex(s => s.layer === layer);
+    if (index !== -1) {
+      const shape = shapes[index];
+      if (shape.labelMarker) {
+        map.removeLayer(shape.labelMarker);
+        shape.labelMarker = null;
+      }
+      if (shape.connectorLine) {
+        map.removeLayer(shape.connectorLine);
+        shape.connectorLine = null;
+      }
+      toDelete.push(index);
+    }
+  });
+  toDelete.sort((a,b)=>b-a).forEach(i => shapes.splice(i,1));
+  buildTree();
+  refreshWktPanel();
+});
+
+/* =============================== Générer depuis WKT =============================== */
+
+document.getElementById('generateFromWktBtn').addEventListener('click', () => {
+  const wktText = document.getElementById('wktInput').value.trim();
+  if (!wktText) {
+    alert('Veuillez entrer une géométrie WKT.');
+    return;
+  }
+  let layer;
+  try {
+    const icon = getPointIcon(selectedPointSymbol);
+    layer = layerFromWkt(wktText, '#3388ff', icon);
+  } catch (e) {
+    alert(e.message || 'WKT invalide.');
+    return;
+  }
+  drawnItems.addLayer(layer);
+
+  if (layer instanceof L.Marker) {
+    // icône déjà gérée
+  } else if (layer instanceof L.Polyline && !(layer instanceof L.Polygon)) {
+    layer.setStyle({ color:'#3388ff', fill:false });
+    if (selectedLinePattern && selectedLinePattern !== 'none') {
+      applyLinePattern(layer, selectedLinePattern);
+    }
+  } else if ((layer instanceof L.Polygon)||(layer instanceof L.Rectangle)||(layer instanceof L.Circle)) {
+    layer.setStyle({ color:'#3388ff', fill:true, fillOpacity:1 });
+    if (selectedFillPattern && selectedFillPattern !== 'none') {
+      applyFillPattern(layer, selectedFillPattern);
+    }
+  }
+
+  const id = shapes.length + 1;
+  const name = `Objet ${id}`;
+
+  const item = {
+    id,
+    name,
+    layer,
+    wkt: wktText,
+    color: '#3388ff',
+    fillPattern: ((layer instanceof L.Polygon)||(layer instanceof L.Rectangle)||(layer instanceof L.Circle)) ? selectedFillPattern : null,
+    linePattern: (layer instanceof L.Polyline && !(layer instanceof L.Polygon)) ? selectedLinePattern : null,
+    pointSymbol: (layer instanceof L.Marker) ? selectedPointSymbol : null,
+    labelText: name,
+    photos: '',
+    textHeight: getCurrentLabelFontPx()
+  };
+
+  shapes.push(item);
+  buildTree();
+  setSelected(layer);
+  centerOnLayer(layer);
+  refreshWktPanel();
+});
+
+/* =============================== IMPORT / EXPORT EXCEL =============================== */
+
+document.getElementById('btnImportExcel').addEventListener('click', () => {
+  document.getElementById('excelFileInput').click();
+});
+
+document.getElementById('excelFileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    const data = new Uint8Array(evt.target.result);
+    const wb = XLSX.read(data, { type:'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval:'' });
+
+    rows.forEach((row, idx) => {
+      const formeWKT  = String(row.RefFormePosition || '').trim();
+      const formeType = String(row.RefFormeType || '').trim();
+      const colorRGBA = parseColor(row.RefFormeCouleur, '#3388ff');
+      const labelWKT  = String(row.RefEtiquettePosition || '').trim();
+      const labelText = String(row.RefEtiquetteLibelle || '').trim() || `Objet import ${idx+1}`;
+      const photos    = String(row.Photos || '').trim();
+      const textHeight = parseFloat(row.Hauteur_Texte);
+      const fontPx = (!isNaN(textHeight) && textHeight > 0) ? textHeight : getCurrentLabelFontPx();
+
+      if (!formeWKT) return;
+
+      let fillPattern = null;
+      let linePattern = null;
+      let pointSymbol = null;
+
+      if (formeType && formeType !== 'none') {
+        const fillEntry  = svgDefsRegistry.fills.find(f => f.patternId === formeType || f.id === formeType);
+        if (fillEntry) fillPattern = fillEntry.patternId;
+
+        const lineEntry  = svgDefsRegistry.lines.find(l => l.patternId === formeType || l.id === formeType);
+        if (lineEntry) linePattern = lineEntry.patternId;
+
+        const pointEntry = svgDefsRegistry.points.find(p => p.id === formeType);
+        if (pointEntry) pointSymbol = pointEntry.id;
+      }
+
+      const icon = getPointIcon(pointSymbol);
+
+      let layer;
+      try {
+        layer = layerFromWkt(formeWKT, colorRGBA, icon);
+      } catch (e) {
+        console.warn('WKT invalide (forme) ligne', idx+1, e);
+        return;
+      }
+
+      drawnItems.addLayer(layer);
+
+      if (layer instanceof L.Marker) {
+        if (icon) layer.setIcon(icon);
+      } else if (layer instanceof L.Polyline && !(layer instanceof L.Polygon)) {
+        layer.setStyle({ color: colorRGBA, fill:false });
+        if (linePattern) applyLinePattern(layer, linePattern);
+      } else if ((layer instanceof L.Polygon)||(layer instanceof L.Rectangle)||(layer instanceof L.Circle)) {
+        layer.setStyle({ color: colorRGBA, fill:true, fillOpacity:1 });
+        if (fillPattern) applyFillPattern(layer, fillPattern);
+      }
+
+      let labelPos = null;
+      if (labelWKT) {
+        try {
+          const g = wellknown.parse(labelWKT);
+          if (g && g.type === 'Point') {
+            const [lng,lat] = g.coordinates;
+            labelPos = L.latLng(lat,lng);
+          }
+        } catch(e){}
+      }
+
+      const id = shapes.length + 1;
+      const name = `Objet import ${id}`;
+
+const item = {
+  id,
+  name,
+  layer,
+  wkt: formeWKT,
+  color: colorRGBA,
+  fillPattern,
+  linePattern,
+  pointSymbol,
+  labelText: labelText || name,
+  photos,
+  textHeight: fontPx,
+  labelPos,
+  labelMarker: null,
+  connectorLine: null
+};
+
+shapes.push(item);
+layer.on('click', () => setSelected(layer));
+
+if (labelPos) {
+  // Création immédiate de l'étiquette
+  const labelMarker = createLabelMarker(
+    labelPos,
+    item.labelText,
+    colorRGBA,
+    photos,
+    fontPx
+  ).addTo(map);
+
+  item.labelMarker = labelMarker;
+
+  // Trait de liaison vers la forme
+  const geomPoint = getConnectionPoint(layer, labelPos);
+  const connector = L.polyline(
+    [geomPoint, labelPos],
+    { color: colorRGBA, weight: 1, interactive: false }
+  ).addTo(map);
+
+  item.connectorLine = connector;
+
+  // Mise à jour quand on déplace l'étiquette
+  labelMarker.on('drag', () => {
+    item.labelPos = labelMarker.getLatLng();
+    updateLabelConnector(item);
+  });
+  labelMarker.on('dragend', () => {
+    item.labelPos = labelMarker.getLatLng();
+    updateLabelConnector(item);
+  });
+
+  updateLabelScale();
+  updateLabelConnector(item);
+}
+    });
+
+    buildTree();
+    refreshWktPanel();
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+document.getElementById('btnExportExcel').addEventListener('click', () => {
+  const records = shapes.map(s => {
+    const formeWKT = layerToWkt(s.layer);
+    // On exporte toujours le "nom de fichier sans .svg" (entry.id)
+    // pour que ça corresponde à ce qu'il y a dans le dossier svg_anomalies.
+    let formeType = 'none';
+
+    if (s.fillPattern && s.fillPattern !== 'none') {
+      const fillEntry = svgDefsRegistry.fills.find(
+        f => f.patternId === s.fillPattern || f.id === s.fillPattern
+      );
+      formeType = fillEntry ? fillEntry.id : 'none';
+    } else if (s.linePattern && s.linePattern !== 'none') {
+      const lineEntry = svgDefsRegistry.lines.find(
+        l => l.patternId === s.linePattern || l.id === s.linePattern
+      );
+      formeType = lineEntry ? lineEntry.id : 'none';
+    } else if (s.pointSymbol && s.pointSymbol !== 'none') {
+      const pointEntry = svgDefsRegistry.points.find(
+        p => p.id === s.pointSymbol
+      );
+      formeType = pointEntry ? pointEntry.id : 'none';
+    }
+
+    const colorRgba = s.color || '#3388ff';
+
+    let labelWkt = '';
+    const labelLatLng =
+      s.labelPos ||
+      (s.labelMarker && s.labelMarker.getLatLng && s.labelMarker.getLatLng()) ||
+      (s.layer.getBounds && s.layer.getBounds().getCenter && s.layer.getBounds().getCenter()) ||
+      (s.layer.getLatLng && s.layer.getLatLng()) ||
+      map.getCenter();
+
+    if (labelLatLng) {
+      labelWkt = `POINT(${labelLatLng.lng} ${labelLatLng.lat})`;
+    }
+
+    return {
+      RefFormePosition: formeWKT,
+      RefFormeType: formeType,
+      RefFormeCouleur: colorRgba,
+      RefEtiquettePosition: labelWkt,
+      RefEtiquetteLibelle: s.labelText || s.name || '',
+      Photos: s.photos || '',
+      Hauteur_Texte: s.textHeight || getCurrentLabelFontPx()
+    };
+  });
+
+  const ws = XLSX.utils.json_to_sheet(records, {
+    header: [
+      'RefFormePosition',
+      'RefFormeType',
+      'RefFormeCouleur',
+      'RefEtiquettePosition',
+      'RefEtiquetteLibelle',
+      'Photos',
+      'Hauteur_Texte'
+    ]
+  });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Dessin');
+  const wbout = XLSX.write(wb, { bookType:'xlsx', type:'array' });
+
+  const blob = new Blob([wbout], { type:'application/octet-stream' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Export_Dessin.xlsx';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+/* =============================== EXPORT IMAGE (PNG) =============================== */
+
+const _imgCache = new Map();
+function loadImage(url){
+  if (_imgCache.has(url)) return _imgCache.get(url);
+  const p = new Promise((resolve,reject)=>{
+    const im = new Image();
+    im.crossOrigin = 'anonymous';
+    im.onload = () => resolve(im);
+    im.onerror = () => reject(new Error('Erreur chargement ' + url));
+    im.src = url;
+  });
+  _imgCache.set(url,p);
+  return p;
+}
+
+async function getFillPattern(patternId, ctx){
+  if (!patternId || patternId === 'none') return null;
+  const entry = svgDefsRegistry.fills.find(f => f.patternId === patternId);
+  if (!entry) return null;
+  const img = await loadImage(entry.url);
+  return ctx.createPattern(img, 'repeat');
+}
+
+async function getLinePattern(patternId, ctx){
+  if (!patternId || patternId === 'none') return null;
+  const entry = svgDefsRegistry.lines.find(l => l.patternId === patternId);
+  if (!entry) return null;
+  const img = await loadImage(entry.url);
+  return ctx.createPattern(img, 'repeat');
+}
+
+async function drawPointSymbol(ctx, latlng, symbolId, scale){
+  const A = toXY(latlng);
+  const size = 16 * (scale || 1);
+  const half = size / 2;
+
+  if (!symbolId || symbolId === 'none') {
+    ctx.beginPath();
+    ctx.arc(A.x, A.y, 3, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(51,136,255,1)';
+    ctx.fill();
+    return;
+  }
+  const entry = svgDefsRegistry.points.find(p => p.id === symbolId);
+  if (!entry) {
+    ctx.beginPath();
+    ctx.arc(A.x, A.y, 3, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(51,136,255,1)';
+    ctx.fill();
+    return;
+  }
+  const img = await loadImage(entry.url);
+  ctx.drawImage(img, A.x - half, A.y - half, size, size);
+}
+
+async function drawPolygon(ctx, rings, color, patternId){
+  if (!rings || !rings.length) return;
+  ctx.beginPath();
+  rings.forEach((ring, idx) => {
+    ring.forEach((ll, j) => {
+      const {x,y} = toXY(ll);
+      if (idx === 0 && j === 0) ctx.moveTo(x,y);
+      else if (j === 0) ctx.moveTo(x,y);
+      else ctx.lineTo(x,y);
+    });
+    ctx.closePath();
+  });
+
+  const fillPat = await getFillPattern(patternId, ctx);
+  if (fillPat) {
+    ctx.fillStyle = fillPat;
+    ctx.fill();
+  } else {
+    ctx.fillStyle = color || 'rgba(51,136,255,0.3)';
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = color || 'rgba(51,136,255,1)';
+  ctx.lineWidth = 2 * EXPORT_STROKE_BOOST;
+  ctx.stroke();
+}
+
+async function drawCircle(ctx, center, radius, color, patternId){
+  const C = toXY(center);
+  const r = radius;
+  ctx.beginPath();
+  ctx.arc(C.x, C.y, r, 0, Math.PI*2);
+
+  const fillPat = await getFillPattern(patternId, ctx);
+  if (fillPat) {
+    ctx.fillStyle = fillPat;
+    ctx.fill();
+  } else {
+    ctx.fillStyle = color || 'rgba(51,136,255,0.3)';
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = color || 'rgba(51,136,255,1)';
+  ctx.lineWidth = 2 * EXPORT_STROKE_BOOST;
+  ctx.stroke();
+}
+
+async function drawPolyline(ctx, pts, color, linePatternId) {
+  if (!pts || pts.length < 2) return;
+
+  // 🔹 Cas sans SVG spécifique : polyline classique
+  if (!linePatternId || linePatternId === 'none') {
+    ctx.beginPath();
+    pts.forEach((ll, i) => {
+      const { x, y } = toXY(ll);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = color || 'rgba(51,136,255,1)';
+    ctx.lineWidth = 2 * EXPORT_STROKE_BOOST;
+    ctx.stroke();
+    return;
+  }
+
+  // 🔹 Cherche le SVG de ligne
+  const entry = svgDefsRegistry.lines.find(l => l.patternId === linePatternId);
+  if (!entry) {
+    // Fallback si non trouvé : trait simple
+    ctx.beginPath();
+    pts.forEach((ll, i) => {
+      const { x, y } = toXY(ll);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = color || 'rgba(51,136,255,1)';
+    ctx.lineWidth = 2 * EXPORT_STROKE_BOOST;
+    ctx.stroke();
+    return;
+  }
+
+  const img = await loadImage(entry.url);
+  const thickness = (img.height || 32) * 1.0; // ajuste si tu veux plus ou moins épais
+
+  // 🔹 Pour chaque segment de la polyligne : un SVG étiré
+  for (let i = 0; i < pts.length - 1; i++) {
+    const sLL = pts[i];
+    const eLL = pts[i + 1];
+
+    const s = toXY(sLL);
+    const e = toXY(eLL);
+
+    const dx = e.x - s.x;
+    const dy = e.y - s.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (!len) continue;
+
+    const angle = Math.atan2(dy, dx);
+
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.rotate(angle);
+
+    // Un seul "ruban" SVG pour ce segment
+    ctx.drawImage(img, 0, -thickness / 2, len, thickness);
+
+    ctx.restore();
+  }
+}
+
+function drawLabel(ctx, text, atLatLng, geomPoint, color, photos, fontPx){
+  const safeText = String(text || '');
+  if (!safeText) return;
+
+  const A = toXY(atLatLng);
+  const labelColor = color || 'rgba(51,136,255,1)';
+  const effFontPx = fontPx || 12;
+
+  ctx.save();
+  ctx.font = effFontPx + 'px Arial';
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle = labelColor;
+
+  const textWidth = ctx.measureText(safeText).width;
+  const xText = A.x - textWidth / 2;
+  const yText = A.y;
+
+  ctx.fillText(safeText, xText, yText);
+
+  const lineY = yText + 2;
+  const xLineStart = xText;
+  const xLineEnd   = xText + textWidth;
+
+  ctx.beginPath();
+  ctx.moveTo(xLineStart, lineY);
+  ctx.lineTo(xLineEnd,   lineY);
+  ctx.strokeStyle = labelColor;
+  ctx.lineWidth   = 1;
+  ctx.stroke();
+
+  if (geomPoint) {
+    const G = toXY(geomPoint);
+    const attachX = (G.x < A.x) ? xLineStart : xLineEnd;
+    ctx.beginPath();
+    ctx.moveTo(G.x, G.y);
+    ctx.lineTo(attachX, lineY);
+    ctx.strokeStyle = labelColor;
+    ctx.lineWidth   = 1;
+    ctx.stroke();
+  }
+
+  if (photos) {
+    const photosFontPx = effFontPx * 0.8;
+    ctx.font = Math.round(photosFontPx) + 'px Arial';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = 'red';
+    const photosWidth = ctx.measureText(photos).width;
+    const xPhotos = A.x - photosWidth / 2;
+    const yPhotos = lineY + 2;
+    ctx.fillText(photos, xPhotos, yPhotos);
+  }
+
+  ctx.restore();
+}
+
+document.getElementById('btnExportImage').addEventListener('click', async () => {
+  if (!currentImage.url) {
+    alert('Aucune image de fond chargée.');
+    return;
+  }
+
+  const dpr = window.devicePixelRatio || 1;
+  const W = Math.round(currentImage.width);
+  const H = Math.round(currentImage.height);
+
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  let img = currentImage.imgEl || new Image();
+  if (!currentImage.imgEl) {
+    img.crossOrigin = 'anonymous';
+    img.src = currentImage.url;
+  }
+
+  try { await ensureImageDecoded(img); } catch (_){}
+  try {
+    ctx.drawImage(img, 0, 0, W, H);
+  } catch (e) {
+    alert("Export bloqué (CORS). Charge l'image via 'Parcourir…' ou depuis la même origine.");
+    return;
+  }
+
+  ctx.save();
+  ctx.filter = EXPORT_COLOR_FILTER;
+
+  for (const meta of shapes) {
+    const layer = meta.layer;
+    const color = meta.color || '#3388ff';
+
+    if (layer instanceof L.Marker) {
+      const latlng = layer.getLatLng();
+      await drawPointSymbol(ctx, latlng, meta.pointSymbol, EXPORT_SYMBOL_SCALE);
+    } else if (layer instanceof L.Circle) {
+      await drawCircle(ctx, layer.getLatLng(), layer.getRadius(), color, meta.fillPattern);
+    } else if (layer instanceof L.Rectangle || layer instanceof L.Polygon) {
+      let rings = layer.getLatLngs();
+      if (!Array.isArray(rings[0])) rings = [rings];
+      await drawPolygon(ctx, rings, color, meta.fillPattern);
+    } else if (layer instanceof L.Polyline) {
+      let pts = layer.getLatLngs();
+      if (Array.isArray(pts[0])) pts = pts[0];
+      await drawPolyline(ctx, pts, color, meta.linePattern);
+    }
+
+    const at =
+      meta.labelPos ||
+      (meta.labelMarker && meta.labelMarker.getLatLng && meta.labelMarker.getLatLng()) ||
+      null;
+
+    if (at && (meta.labelText || meta.name)) {
+      const geomPoint = getConnectionPoint(layer, at);
+      const baseFontPx = meta.textHeight || getCurrentLabelFontPx();
+      const fontPxForPng = baseFontPx * 2;
+      drawLabel(
+        ctx,
+        meta.labelText || meta.name || 'Objet',
+        at,
+        geomPoint,
+        color,
+        meta.photos || '',
+        fontPxForPng
+      );
+    }
+  }
+
+  ctx.restore();
+
+  const url = canvas.toDataURL('image/png');
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'export-dessin.png';
+  a.click();
+});
+
+/* =============================== Refresh labels on view change =============================== */
+
+/* =============================== Refresh labels & line SVG on view change =============================== */
+
+/* =============================== Refresh labels & line SVG on view change =============================== */
+
+map.on('zoom', () => {
+  updateLabelScale();
+  updateAllLabelConnectors();
+  refreshLinePatternsOnMap();
+});
+
+map.on('zoomend', () => {
+  updateLabelScale();
+  updateAllLabelConnectors();
+  refreshLinePatternsOnMap();
+});
+
+map.on('move', () => {
+  updateAllLabelConnectors();
+  refreshLinePatternsOnMap();
+});
+
+map.on('moveend', () => {
+  updateAllLabelConnectors();
+  refreshLinePatternsOnMap();
+});
+
+/* =============================== Fond + bouton SVG dir =============================== */
+
+document.getElementById('btnChooseBg').addEventListener('click', () => {
+  document.getElementById('bgFile').click();
+});
+
+document.getElementById('bgFile').addEventListener('change', async (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  try { await loadBackgroundFromURL(url); resetAllDrawn(); }
+  catch { alert("Impossible de charger l'image."); }
+});
+
+document.getElementById('btnLoadSvgDir').addEventListener('click', () => {
+  document.getElementById('svgDirInput').click();
+});
+
+document.getElementById('svgDirInput').addEventListener('change', (e) => {
+  const files = e.target.files || [];
+  loadSvgAnomaliesFromFiles(files);
+});
+
+/* Optionnel : plan par défaut si dispo */
+(async function initDefaultPlan(){
+  try { await loadBackgroundFromURL('plan.jpg'); }
+  catch { map.fitBounds(currentBounds); }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <title>ano-trace-rouille-pg-tech</title>
+  <defs>
+    <style>
+      .streak { fill: none; stroke: #8b4513; stroke-width: 0.8; stroke-linecap: square; opacity: 0.7; }
+      .drip   { fill: none; stroke: #5a2d0c; stroke-width: 0.7; stroke-linecap: square; opacity: 0.7; }
+      .pit    { fill: #7c3f0e; opacity: 0.6; }
+      .hair   { fill: none; stroke: #a0522d; stroke-width: 0.5; stroke-linecap: square; opacity: 0.6; }
+    </style>
+  </defs>
+
+  <!-- 45° diagonal technical streaks (tileable) -->
+  <path class="streak" d="M-6,6 L6,-6" />
+  <path class="streak" d="M-2,10 L10,-2" />
+  <path class="streak" d="M2,14 L14,2" />
+  <path class="streak" d="M6,18 L18,6" />
+  <path class="streak" d="M10,22 L22,10" />
+  <path class="streak" d="M14,26 L26,14" />
+
+  <!-- lighter hairlines to add variation -->
+  <path class="hair" d="M0,8 L8,0" />
+  <path class="hair" d="M8,16 L16,8" />
+  <path class="hair" d="M16,24 L24,16" />
+
+  <!-- small perpendicular 'drip' ticks along selected streaks -->
+  <path class="drip" d="M6,12 L6,14" />
+  <path class="drip" d="M14,4 L14,6" />
+  <path class="drip" d="M20,10 L20,12" />
+
+  <!-- sparse pitting (tile-safe positions) -->
+  <circle class="pit" cx="5" cy="5" r="0.7" />
+  <circle class="pit" cx="13" cy="11" r="0.7" />
+  <circle class="pit" cx="19" cy="4" r="0.6" />
+  <circle class="pit" cx="8" cy="18" r="0.6" />
+</svg>

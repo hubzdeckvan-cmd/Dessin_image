@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <title>ano-vegetation-pt-tech</title>
+  <defs>
+    <style>
+      .blade { fill: none; stroke: #2e7d32; stroke-width: 1.6; stroke-linecap: round; }
+      .hair  { fill: none; stroke: #43a047; stroke-width: 1.2; stroke-linecap: round; }
+      .dot   { fill: #2e7d32; }
+    </style>
+  </defs>
+  <!-- touffe compacte : trois brins, un central et deux inclinés -->
+  <path class="blade" d="M12 16 C12 13, 12 11, 12 8" />
+  <path class="hair"  d="M12 16 C10 13.5, 9 11.5, 9 9.5" />
+  <path class="hair"  d="M12 16 C14 13.5, 15 11.5, 15 9.5" />
+  <!-- petites feuilles / graines -->
+  <circle class="dot" cx="9.5" cy="9.7" r="0.7"/>
+  <circle class="dot" cx="14.6" cy="9.7" r="0.7"/>
+</svg>

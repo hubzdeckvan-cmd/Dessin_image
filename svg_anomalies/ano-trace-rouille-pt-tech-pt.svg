@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <title>ano-trace-rouille-pt-tech</title>
+  <defs>
+    <style>
+      .streak { fill: none; stroke: #8b4513; stroke-width: 1.8; stroke-linecap: square; opacity: 0.85; }
+      .hair   { fill: none; stroke: #a0522d; stroke-width: 1;   stroke-linecap: square; opacity: 0.75; }
+      .drip   { fill: none; stroke: #5a2d0c; stroke-width: 1.2; stroke-linecap: square; opacity: 0.85; }
+      .pit    { fill: #7c3f0e; opacity: 0.85; }
+      .rim    { fill: none; stroke: #7c3f0e; stroke-width: 0.8; opacity: 0.7; }
+    </style>
+  </defs>
+
+  <!-- composition compacte style technique -->
+  <!-- strie principale 45° -->
+  <path class="streak" d="M4,16 L16,4"/>
+  <!-- hairline parallèle plus courte -->
+  <path class="hair" d="M6,18 L13,11"/>
+  <!-- tick perpendiculaire (bavure) -->
+  <path class="drip" d="M11,9 L11,12"/>
+
+  <!-- petite auréole ovale (contour) pour matérialiser la tache -->
+  <ellipse class="rim" cx="14.5" cy="9.5" rx="4.2" ry="3.2"/>
+
+  <!-- piqûres -->
+  <circle class="pit" cx="8.5" cy="14.2" r="0.9"/>
+  <circle class="pit" cx="12.6" cy="8.2"  r="0.7"/>
+  <circle class="pit" cx="16.8" cy="10.6" r="0.6"/>
+</svg>
